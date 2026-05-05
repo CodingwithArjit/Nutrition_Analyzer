@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>NutriScan AI · Food Recognition from Camera</title>
+  <!-- TensorFlow.js and MobileNet model -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.1/dist/mobilenet.min.js"></script>
+  <!-- html5-qrcode still used only for manual barcode -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 10% 20%, rgb(18, 35, 30) 0%, rgb(8, 22, 20) 100%);
+      color: #eef4ff;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+    .container { max-width: 880px; margin: 0 auto; }
+    .app-header { text-align: center; margin-bottom: 2rem; }
+    .app-header h1 {
+      font-size: 2.3rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #b9fbc0, #90f7ec, #5ee0fa);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(45, 212, 120, 0.2);
+      backdrop-filter: blur(8px);
+      padding: 0.3rem 1rem;
+      border-radius: 60px;
+      font-size: 0.7rem;
+      color: #a3f0c0;
+      margin-top: 0.8rem;
+    }
+    .card {
+      background: rgba(20, 30, 35, 0.65);
+      backdrop-filter: blur(12px);
+      border-radius: 2rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      border: 1px solid rgba(80, 250, 150, 0.2);
+    }
+    .input-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    .input-group input {
+      flex: 1;
+      padding: 0.9rem 1.2rem;
+      border-radius: 2rem;
+      background: #1e2a2e;
+      color: white;
+      border: 1px solid #2e4a4f;
+    }
+    button {
+      background: linear-gradient(95deg, #10b981, #059669);
+      border: none;
+      padding: 0 1.5rem;
+      border-radius: 2.5rem;
+      font-weight: 700;
+      color: white;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    button.secondary { background: linear-gradient(95deg, #3b82f6, #2563eb); }
+    #camera-feed {
+      width: 100%;
+      max-width: 400px;
+      border-radius: 1.5rem;
+      margin: 1rem auto;
+      display: block;
+      background: #000;
+      transform: scaleX(-1);
+    }
+    .controls {
+      display: flex;
+      gap: 0.8rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin: 1rem 0;
+    }
+    .scan-status {
+      background: #0f172a80;
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      display: inline-block;
+      text-align: center;
+      margin: 0.5rem auto;
+    }
+    .results-card {
+      background: rgba(15, 25, 28, 0.85);
+      backdrop-filter: blur(16px);
+      border-radius: 2rem;
+      padding: 1.5rem;
+      border-left: 6px solid #2dd4bf;
+    }
+    .product-title { font-size: 1.5rem; font-weight: 800; background: linear-gradient(135deg, #f0fdf4, #ccfbf1); background-clip: text; -webkit-background-clip: text; color: transparent; }
+    .nutrient-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+    .nutrient-item {
+      background: rgba(0,0,0,0.35);
+      border-radius: 1rem;
+      padding: 0.6rem;
+      text-align: center;
+    }
+    .nutrient-value { font-size: 1.6rem; font-weight: 800; color: #7ef0ba; }
+    .error-message { color: #ffb3a1; background: #3b1e1a; padding: 1rem; border-radius: 1rem; }
+    .loading::before { content: ""; display: inline-block; width: 18px; height: 18px; border: 2px solid #4ade80; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; margin-right: 0.5rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    footer { text-align: center; font-size: 0.7rem; margin-top: 2rem; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="app-header">
+    <h1><i class="fas fa-eye"></i> NutriScan AI · Visual Food ID</h1>
+    <p>Point camera at food → AI identifies it → shows nutrition</p>
+    <div class="badge"><i class="fas fa-brain"></i> MobileNet food recognition + Open Food Facts</div>
+  </div>
+
+  <!-- Visual food scanner -->
+  <div class="card">
+    <h2><i class="fas fa-camera"></i> Identify food from camera</h2>
+    <p style="font-size:0.85rem;">Hold a food item in front of the camera, then click "Capture & Identify"</p>
+    <video id="camera-feed" autoplay playsinline muted width="100%"></video>
+    <div class="controls">
+      <button id="start-camera-btn" class="secondary"><i class="fas fa-video"></i> Start Camera</button>
+      <button id="capture-btn" disabled><i class="fas fa-camera-retro"></i> Capture & Identify Food</button>
+      <button id="stop-camera-btn"><i class="fas fa-stop"></i> Stop Camera</button>
+    </div>
+    <div id="recognition-status" class="scan-status">⚡ Ready – start camera, then capture a food image</div>
+  </div>
+
+  <!-- Manual search (fallback) -->
+  <div class="card">
+    <h2><i class="fas fa-search"></i> Or search by name</h2>
+    <form id="food-search-form">
+      <div class="input-group">
+        <input type="text" id="food-input" placeholder="e.g., pizza, banana, apple, rice">
+        <button type="submit"><i class="fas fa-leaf"></i> Analyze</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Manual barcode entry (still useful) -->
+  <div class="card">
+    <h2><i class="fas fa-barcode"></i> Manual barcode (packaged foods)</h2>
+    <div class="input-group">
+      <input type="text" id="manual-barcode" placeholder="Type product barcode number">
+      <button id="manual-btn"><i class="fas fa-database"></i> Lookup</button>
+    </div>
+  </div>
+
+  <!-- Results -->
+  <div id="results-container">
+    <div class="results-card" style="text-align:center;">
+      <i class="fas fa-robot" style="font-size:2rem;"></i>
+      <p>Nutrition data will appear here</p>
+    </div>
+  </div>
+  <footer>AI food recognition via TensorFlow.js MobileNet (trained on ImageNet) - works for common foods like pizza, banana, burger, apple, etc.</footer>
+</div>
+
+<script>
+  // ---------- DOM elements ----------
+  const video = document.getElementById('camera-feed');
+  const startCamBtn = document.getElementById('start-camera-btn');
+  const captureBtn = document.getElementById('capture-btn');
+  const stopCamBtn = document.getElementById('stop-camera-btn');
+  const recognitionStatus = document.getElementById('recognition-status');
+  const resultsContainer = document.getElementById('results-container');
+  const foodForm = document.getElementById('food-search-form');
+  const foodInput = document.getElementById('food-input');
+  const manualBarcodeInput = document.getElementById('manual-barcode');
+  const manualBtn = document.getElementById('manual-btn');
+
+  let stream = null;
+  let mobilenetModel = null;
+
+  // ---------- Load MobileNet model once ----------
+  async function loadModel() {
+    recognitionStatus.innerHTML = "<i class='fas fa-download'></i> Loading AI model (one-time, ~5MB)...";
+    try {
+      mobilenetModel = await mobilenet.load();
+      recognitionStatus.innerHTML = "✅ Model ready. Start camera and capture food.";
+    } catch (err) {
+      recognitionStatus.innerHTML = "⚠️ Failed to load AI model. Check internet.";
+      console.error(err);
+    }
+  }
+  loadModel();
+
+  // ---------- Camera handling ----------
+  async function startCamera() {
+    if (stream) stopCamera();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      video.srcObject = stream;
+      await video.play();
+      captureBtn.disabled = false;
+      recognitionStatus.innerHTML = "📸 Camera active – point at food, then click Capture.";
+    } catch (err) {
+      recognitionStatus.innerHTML = "Camera error: " + err.message;
+    }
+  }
+
+  function stopCamera() {
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    captureBtn.disabled = true;
+    recognitionStatus.innerHTML = "Camera stopped. Click 'Start Camera' again.";
+  }
+
+  startCamBtn.onclick = startCamera;
+  stopCamBtn.onclick = stopCamera;
+
+  // ---------- Capture frame and predict food ----------
+  async function captureAndIdentify() {
+    if (!mobilenetModel) {
+      recognitionStatus.innerHTML = "Model not ready yet. Wait a moment.";
+      return;
+    }
+    if (!video.videoWidth || !video.videoHeight) {
+      recognitionStatus.innerHTML = "No video feed. Start camera first.";
+      return;
+    }
+
+    recognitionStatus.innerHTML = "🔍 Analyzing food image...";
+    // Create a canvas to capture current video frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    try {
+      // Run MobileNet prediction
+      const predictions = await mobilenetModel.classify(canvas);
+      if (predictions.length === 0) throw new Error("No object recognized");
+      
+      // Get the top prediction (highest confidence)
+      const top = predictions[0];
+      const className = top.className;
+      const confidence = (top.probability * 100).toFixed(1);
+      
+      recognitionStatus.innerHTML = `🤖 Detected: "${className}" (${confidence}%) – searching nutrition...`;
+      
+      // Use the detected food name to query Open Food Facts
+      // Clean up class name: remove numbers, common non-food suffixes
+      let foodQuery = className.split(',')[0].trim().toLowerCase();
+      // Remove words like "sauce", "cup", "packaged" etc.
+      foodQuery = foodQuery.replace(/packaged|container|box|carton|cup|bowl/i, '').trim();
+      
+      // If confidence is too low, ask to retry
+      if (top.probability < 0.4) {
+        recognitionStatus.innerHTML = `⚠️ Low confidence (${confidence}%). Please take a clearer photo or use text search.`;
+        return;
+      }
+      
+      // Now search nutrition for that food
+      await analyze(() => fetchProductByQuery(foodQuery));
+      recognitionStatus.innerHTML = `✅ Identified as "${foodQuery}" – nutrition loaded.`;
+    } catch (err) {
+      recognitionStatus.innerHTML = "Recognition failed: " + err.message;
+      console.error(err);
+    }
+  }
+  
+  captureBtn.onclick = captureAndIdentify;
+
+  // ---------- Open Food Facts API (same as before) ----------
+  async function fetchProductByBarcode(barcode) {
+    const cleanCode = barcode.toString().trim();
+    const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(cleanCode)}.json`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`API error ${resp.status}`);
+    const data = await resp.json();
+    if (data.status === 0 || !data.product) throw new Error(`No product for barcode ${cleanCode}`);
+    return data.product;
+  }
+
+  async function fetchProductByQuery(query) {
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments`;
+    const resp = await fetch(searchUrl);
+    const data = await resp.json();
+    const products = data.products || [];
+    if (products.length === 0) throw new Error(`No results for "${query}"`);
+    
+    const scored = products.map(p => {
+      let score = 0;
+      const n = p.nutriments || {};
+      if (n['energy-kcal']) score += 3;
+      if (n.proteins) score += 2;
+      if (n.fat) score += 2;
+      if (n.carbohydrates) score += 2;
+      if (n.fiber) score += 1;
+      if (n.sugars) score += 1;
+      return { product: p, score };
+    });
+    scored.sort((a,b) => b.score - a.score);
+    const best = scored[0].product;
+    if (best.score === 0) throw new Error(`No detailed nutrition data for "${query}". Try a different keyword.`);
+    return best;
+  }
+
+  function renderNutrition(product) {
+    const n = product.nutriments || {};
+    const cal = n['energy-kcal'] ? parseFloat(n['energy-kcal']).toFixed(0) : '—';
+    const protein = n.proteins ? parseFloat(n.proteins).toFixed(1) : '—';
+    const fat = n.fat ? parseFloat(n.fat).toFixed(1) : '—';
+    const carbs = n.carbohydrates ? parseFloat(n.carbohydrates).toFixed(1) : '—';
+    const fiber = n.fiber ? parseFloat(n.fiber).toFixed(1) : '—';
+    const sugars = n.sugars ? parseFloat(n.sugars).toFixed(1) : '—';
+    const sodium = n.sodium ? parseFloat(n.sodium).toFixed(0) : '—';
+    const name = product.product_name || product.generic_name || "Food product";
+    const brand = product.brands || "Unknown brand";
+    
+    let healthScore = 70;
+    if (protein !== '—' && fiber !== '—' && sugars !== '—') {
+      let score = (parseFloat(protein) * 1.5 + parseFloat(fiber) * 2) - (parseFloat(sugars) * 1.2 + parseFloat(fat) * 0.8);
+      score = Math.min(100, Math.max(20, Math.round(score + 50)));
+      healthScore = score;
+    } else if (cal !== '—') {
+      let kcal = parseFloat(cal);
+      if (kcal < 200) healthScore = 88;
+      else if (kcal < 500) healthScore = 70;
+      else healthScore = 52;
+    }
+    let scoreIcon = healthScore >= 75 ? '🍏 Excellent' : (healthScore >= 50 ? '⚡ Good' : '⚠️ Moderate');
+    let scoreColor = healthScore >= 75 ? '#4ade80' : (healthScore >= 50 ? '#facc15' : '#f97316');
+    
+    resultsContainer.innerHTML = `
+      <div class="results-card">
+        <div class="product-title"><i class="fas fa-utensils"></i> ${escapeHtml(name)}</div>
+        <div class="product-meta"><i class="fas fa-tag"></i> ${escapeHtml(brand)} · per 100g</div>
+        <div class="nutrient-grid">
+          <div class="nutrient-item"><div class="nutrient-value">${cal}</div><div>kcal</div><div>Energy</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${protein}</div><div>g</div><div>Protein</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${fat}</div><div>g</div><div>Fat</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${carbs}</div><div>g</div><div>Carbs</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${fiber}</div><div>g</div><div>Fiber</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${sugars}</div><div>g</div><div>Sugars</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${sodium}</div><div>mg</div><div>Sodium</div></div>
+        </div>
+        <div class="health-score" style="border-left: 4px solid ${scoreColor};">Health: ${healthScore}/100 · ${scoreIcon}</div>
+      </div>
+    `;
+  }
+
+  function showError(msg) {
+    resultsContainer.innerHTML = `<div class="results-card"><div class="error-message">⚠️ ${msg}</div></div>`;
+  }
+  function showLoading() {
+    resultsContainer.innerHTML = `<div class="results-card"><div class="loading">Fetching nutrition...</div></div>`;
+  }
+  function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+
+  async function analyze(fetcher) {
+    showLoading();
+    try {
+      const product = await fetcher();
+      renderNutrition(product);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // Text search handler
+  foodForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const q = foodInput.value.trim();
+    if (!q) return showError("Enter a food name");
+    await analyze(() => fetchProductByQuery(q));
+  };
+
+  // Manual barcode
+  manualBtn.onclick = async () => {
+    const code = manualBarcodeInput.value.trim();
+    if (!code) return showError("Enter a barcode");
+    stopCamera();
+    await analyze(() => fetchProductByBarcode(code));
+  };
+  
+  foodInput.value = "banana";
+</script>
+</body>
+</html>
