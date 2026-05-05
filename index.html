@@ -28,7 +28,6 @@
       margin: 0 auto;
     }
 
-    /* header with glow */
     .app-header {
       text-align: center;
       margin-bottom: 2.5rem;
@@ -62,7 +61,6 @@
       border: 1px solid rgba(80, 250, 150, 0.4);
     }
 
-    /* glassmorphic cards */
     .card {
       background: rgba(20, 30, 35, 0.65);
       backdrop-filter: blur(12px);
@@ -137,12 +135,6 @@
     button.secondary:hover {
       background: linear-gradient(95deg, #2563eb, #1d4ed8);
     }
-    .scanner-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin: 1rem 0 0.8rem;
-    }
     #video-container {
       position: relative;
       width: 100%;
@@ -184,7 +176,6 @@
       margin: 0.5rem auto;
       color: #bbf0e3;
     }
-    /* results card - nutri rich */
     .results-card {
       background: rgba(15, 25, 28, 0.85);
       backdrop-filter: blur(16px);
@@ -221,7 +212,6 @@
       padding: 0.9rem 0.4rem;
       text-align: center;
       backdrop-filter: blur(4px);
-      transition: 0.1s ease;
       border: 1px solid rgba(45, 212, 120, 0.2);
     }
     .nutrient-value {
@@ -306,7 +296,6 @@
     <div class="badge"><i class="fas fa-barcode"></i> EAN‑13 / UPC / QR · Open Food Facts core</div>
   </div>
 
-  <!-- TEXT SEARCH with modern look -->
   <div class="card">
     <h2><i class="fas fa-search"></i> Analyze by name</h2>
     <form id="food-search-form">
@@ -318,7 +307,6 @@
     </form>
   </div>
 
-  <!-- BUILT-IN BARCODE SCANNER (Fixed & beautiful) -->
   <div class="card">
     <h2><i class="fas fa-camera-retro"></i> Scan product barcode</h2>
     <p style="font-size:0.85rem; opacity:0.9;">Point camera at any food package barcode — instant nutrition breakdown</p>
@@ -336,7 +324,6 @@
     </div>
     <div id="scan-status" class="scan-status"><i class="fas fa-sync-alt"></i> Ready – start camera & hold steady over barcode</div>
     
-    <!-- manual fallback elegant -->
     <div style="margin-top: 1.2rem; background: rgba(0,0,0,0.2); border-radius: 1.5rem; padding: 1rem;">
       <label><i class="fas fa-keyboard"></i> Manual barcode entry:</label>
       <div class="input-group">
@@ -346,7 +333,6 @@
     </div>
   </div>
 
-  <!-- NUTRITION RESULTS DYNAMIC -->
   <div id="results-container">
     <div class="results-card" style="text-align:center; opacity:0.8;">
       <i class="fas fa-robot" style="font-size:2.5rem; color:#4ade80;"></i>
@@ -375,32 +361,41 @@
   let barcodeDetector = null;
 
   // ---------- Open Food Facts API ----------
- async function fetchProductByQuery(query) {
-  const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments`;
-  const resp = await fetch(searchUrl);
-  const data = await resp.json();
-  const products = data.products || [];
-  if (products.length === 0) throw new Error(`No results for "${query}"`);
-  
-  // Prefer product with most nutrition fields filled
-  const scored = products.map(p => {
-    let score = 0;
-    const n = p.nutriments || {};
-    if (n['energy-kcal']) score += 3;
-    if (n.proteins) score += 2;
-    if (n.fat) score += 2;
-    if (n.carbohydrates) score += 2;
-    if (n.fiber) score += 1;
-    if (n.sugars) score += 1;
-    return { product: p, score };
-  });
-  scored.sort((a,b) => b.score - a.score);
-  const best = scored[0].product;
-  if (best.score === 0) throw new Error(`No detailed nutrition data for "${query}". Try a different keyword.`);
-  return best;
-}
+  // --- ADDED MISSING fetchProductByBarcode ---
+  async function fetchProductByBarcode(barcode) {
+    const cleanCode = barcode.toString().trim();
+    const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(cleanCode)}.json`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`API error ${resp.status}`);
+    const data = await resp.json();
+    if (data.status === 0 || !data.product) throw new Error(`No product found for barcode ${cleanCode}`);
+    return data.product;
+  }
 
-  // Enhanced render with additional nutrients & health score (techy & rich)
+  async function fetchProductByQuery(query) {
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments`;
+    const resp = await fetch(searchUrl);
+    const data = await resp.json();
+    const products = data.products || [];
+    if (products.length === 0) throw new Error(`No results for "${query}"`);
+    
+    const scored = products.map(p => {
+      let score = 0;
+      const n = p.nutriments || {};
+      if (n['energy-kcal']) score += 3;
+      if (n.proteins) score += 2;
+      if (n.fat) score += 2;
+      if (n.carbohydrates) score += 2;
+      if (n.fiber) score += 1;
+      if (n.sugars) score += 1;
+      return { product: p, score };
+    });
+    scored.sort((a,b) => b.score - a.score);
+    const best = scored[0].product;
+    if (best.score === 0) throw new Error(`No detailed nutrition data for "${query}". Try a different keyword.`);
+    return best;
+  }
+
   function renderNutrition(product) {
     const n = product.nutriments || {};
     const cal = n['energy-kcal'] ? parseFloat(n['energy-kcal']).toFixed(0) : '—';
@@ -414,7 +409,6 @@
     const name = product.product_name || product.generic_name || "Food product";
     const brand = product.brands || "Unknown brand";
     
-    // simple health score (mock: ratio of protein+fiber vs sugars+fat)
     let healthScore = 70;
     if (protein !== '—' && fiber !== '—' && sugars !== '—') {
       let score = (parseFloat(protein) * 1.5 + parseFloat(fiber) * 2) - (parseFloat(sugars) * 1.2 + parseFloat(fat) * 0.8);
@@ -470,7 +464,7 @@
     }
   }
 
-  // ---------- NATIVE BARCODE DETECTOR (fixes scanning effectively) ----------
+  // ---------- NATIVE BARCODE DETECTOR ----------
   async function startNativeScanner() {
     if (!window.BarcodeDetector) {
       scanStatusDiv.innerHTML = "<i class='fas fa-exclamation-circle'></i> Browser missing BarcodeDetector → using fallback (less accurate).";
@@ -554,14 +548,13 @@
   startBtn.onclick = () => { stopCamera(); startNativeScanner(); };
   stopBtn.onclick = () => { stopCamera(); scanStatusDiv.innerHTML = "<i class='fas fa-power-off'></i> Camera stopped."; };
   
-  // text search
   foodForm.onsubmit = async (e) => {
     e.preventDefault();
     const q = foodInput.value.trim();
     if (!q) return showError("Enter a food name");
     await analyze(() => fetchProductByQuery(q));
   };
-  // manual barcode
+  
   manualBtn.onclick = async () => {
     const code = manualBarcodeInput.value.trim();
     if (!code) return showError("Enter a barcode number");
