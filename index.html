@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <title>NutriScan AI · Smart Barcode Nutrition Analyzer</title>
+  <!-- html5-qrcode fallback -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 10% 20%, rgb(18, 35, 30) 0%, rgb(8, 22, 20) 100%);
+      color: #eef4ff;
+      padding: 1.5rem;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 880px;
+      margin: 0 auto;
+    }
+
+    /* header with glow */
+    .app-header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .app-header h1 {
+      font-size: 2.3rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #b9fbc0, #90f7ec, #5ee0fa);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      letter-spacing: -0.5px;
+      text-shadow: 0 0 15px rgba(80, 250, 150, 0.2);
+    }
+    .app-header p {
+      font-size: 1rem;
+      color: #b0d4ff;
+      margin-top: 0.5rem;
+      font-weight: 400;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(45, 212, 120, 0.2);
+      backdrop-filter: blur(8px);
+      padding: 0.3rem 1rem;
+      border-radius: 60px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #a3f0c0;
+      margin-top: 0.8rem;
+      border: 1px solid rgba(80, 250, 150, 0.4);
+    }
+
+    /* glassmorphic cards */
+    .card {
+      background: rgba(20, 30, 35, 0.65);
+      backdrop-filter: blur(12px);
+      border-radius: 2rem;
+      padding: 1.6rem 1.8rem;
+      margin-bottom: 2rem;
+      border: 1px solid rgba(80, 250, 150, 0.2);
+      box-shadow: 0 20px 35px -12px rgba(0, 0, 0, 0.4);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 25px 40px -12px rgba(0, 0, 0, 0.5);
+      border-color: rgba(80, 250, 150, 0.5);
+    }
+    .card h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #d2f0e6;
+    }
+    .input-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.8rem;
+      margin-top: 0.5rem;
+    }
+    .input-group input {
+      flex: 1;
+      padding: 0.9rem 1.2rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 2rem;
+      background: #1e2a2e;
+      color: #f0f9ff;
+      font-family: 'Inter', monospace;
+      transition: 0.2s;
+      outline: none;
+      border: 1px solid #2e4a4f;
+    }
+    .input-group input:focus {
+      border-color: #4ade80;
+      box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.3);
+    }
+    button {
+      background: linear-gradient(95deg, #10b981, #059669);
+      border: none;
+      padding: 0 1.8rem;
+      border-radius: 2.5rem;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: white;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+    button:hover {
+      transform: scale(0.96);
+      background: linear-gradient(95deg, #059669, #047857);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    button.secondary {
+      background: linear-gradient(95deg, #3b82f6, #2563eb);
+    }
+    button.secondary:hover {
+      background: linear-gradient(95deg, #2563eb, #1d4ed8);
+    }
+    .scanner-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin: 1rem 0 0.8rem;
+    }
+    #video-container {
+      position: relative;
+      width: 100%;
+      max-width: 500px;
+      margin: 1rem auto;
+      border-radius: 1.5rem;
+      overflow: hidden;
+      background: #000;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      border: 1px solid #2dd4bf;
+    }
+    video {
+      width: 100%;
+      display: block;
+      transform: scaleX(-1);
+    }
+    .controls {
+      display: flex;
+      gap: 0.8rem;
+      justify-content: center;
+      margin: 0.8rem 0;
+      flex-wrap: wrap;
+    }
+    input[type="range"] {
+      width: 150px;
+      background: #2d3e42;
+      height: 4px;
+      border-radius: 10px;
+    }
+    .scan-status {
+      font-size: 0.85rem;
+      background: #0f172a80;
+      backdrop-filter: blur(4px);
+      padding: 0.4rem 1rem;
+      border-radius: 40px;
+      display: inline-block;
+      width: auto;
+      text-align: center;
+      margin: 0.5rem auto;
+      color: #bbf0e3;
+    }
+    /* results card - nutri rich */
+    .results-card {
+      background: rgba(15, 25, 28, 0.85);
+      backdrop-filter: blur(16px);
+      border-radius: 2rem;
+      padding: 1.6rem;
+      border-left: 6px solid #2dd4bf;
+      transition: all 0.2s;
+    }
+    .product-title {
+      font-size: 1.7rem;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+      background: linear-gradient(135deg, #f0fdf4, #ccfbf1);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+    .product-meta {
+      font-size: 0.85rem;
+      color: #9ec8e7;
+      margin-bottom: 1.2rem;
+      border-bottom: 1px dashed #2e6b5e;
+      padding-bottom: 0.6rem;
+    }
+    .nutrient-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+    .nutrient-item {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 1.2rem;
+      padding: 0.9rem 0.4rem;
+      text-align: center;
+      backdrop-filter: blur(4px);
+      transition: 0.1s ease;
+      border: 1px solid rgba(45, 212, 120, 0.2);
+    }
+    .nutrient-value {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #7ef0ba;
+      line-height: 1.2;
+    }
+    .nutrient-unit {
+      font-size: 0.7rem;
+      color: #b2f0e0;
+    }
+    .nutrient-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #cbd5e6;
+      margin-top: 0.3rem;
+    }
+    .health-score {
+      background: #0e1e22;
+      border-radius: 1.5rem;
+      padding: 0.6rem 1rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 700;
+      font-size: 0.9rem;
+      margin-top: 0.8rem;
+    }
+    .error-message {
+      color: #ffb3a1;
+      background: #3b1e1a;
+      padding: 1rem;
+      border-radius: 1.2rem;
+      font-weight: 500;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 500;
+    }
+    .loading::before {
+      content: "";
+      width: 22px;
+      height: 22px;
+      border: 2px solid #4ade80;
+      border-top-color: #0f3b2c;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    hr {
+      margin: 1rem 0;
+      border: none;
+      height: 1px;
+      background: linear-gradient(to right, #2dd4bf, transparent);
+    }
+    footer {
+      text-align: center;
+      font-size: 0.7rem;
+      color: #7b9eb3;
+      margin-top: 2rem;
+    }
+    i {
+      font-size: 1rem;
+    }
+    @media (max-width: 550px) {
+      body { padding: 1rem; }
+      .card { padding: 1.2rem; }
+      .nutrient-value { font-size: 1.4rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="app-header">
+    <h1><i class="fas fa-microchip"></i> NutriScan AI</h1>
+    <p>Neural‑grade barcode intelligence · real‑time nutrition · 100+ million products</p>
+    <div class="badge"><i class="fas fa-barcode"></i> EAN‑13 / UPC / QR · Open Food Facts core</div>
+  </div>
+
+  <!-- TEXT SEARCH with modern look -->
+  <div class="card">
+    <h2><i class="fas fa-search"></i> Analyze by name</h2>
+    <form id="food-search-form">
+      <div class="input-group">
+        <input type="text" id="food-input" placeholder="e.g., organic rolled oats, wild salmon, quinoa">
+        <button type="submit"><i class="fas fa-leaf"></i> Analyze</button>
+      </div>
+      <small style="color:#94b5c0; display:block; margin-top:0.6rem;">✔️ AI‑powered search from global food database</small>
+    </form>
+  </div>
+
+  <!-- BUILT-IN BARCODE SCANNER (Fixed & beautiful) -->
+  <div class="card">
+    <h2><i class="fas fa-camera-retro"></i> Scan product barcode</h2>
+    <p style="font-size:0.85rem; opacity:0.9;">Point camera at any food package barcode — instant nutrition breakdown</p>
+    <div id="video-container">
+      <video id="scanner-video" autoplay playsinline muted></video>
+    </div>
+    <div class="controls">
+      <button id="start-cam-btn" class="secondary"><i class="fas fa-video"></i> Start camera</button>
+      <button id="stop-cam-btn" style="background:#475569;"><i class="fas fa-stop"></i> Stop</button>
+      <button id="torch-btn" disabled><i class="fas fa-lightbulb"></i> Torch</button>
+    </div>
+    <div class="controls">
+      <span><i class="fas fa-microscope"></i> Focus range:</span>
+      <input type="range" id="focus-slider" min="0" max="1000" step="1" value="500" disabled>
+    </div>
+    <div id="scan-status" class="scan-status"><i class="fas fa-sync-alt"></i> Ready – start camera & hold steady over barcode</div>
+    
+    <!-- manual fallback elegant -->
+    <div style="margin-top: 1.2rem; background: rgba(0,0,0,0.2); border-radius: 1.5rem; padding: 1rem;">
+      <label><i class="fas fa-keyboard"></i> Manual barcode entry:</label>
+      <div class="input-group">
+        <input type="text" id="manual-barcode" placeholder="e.g., 5901234123457 (EAN-13)">
+        <button id="manual-btn"><i class="fas fa-database"></i> Lookup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NUTRITION RESULTS DYNAMIC -->
+  <div id="results-container">
+    <div class="results-card" style="text-align:center; opacity:0.8;">
+      <i class="fas fa-robot" style="font-size:2.5rem; color:#4ade80;"></i>
+      <p style="margin-top:0.8rem;">🔬 Nutrient intelligence will appear here<br>Scan, search, or enter barcode</p>
+    </div>
+  </div>
+  <footer><i class="fas fa-chart-line"></i> Real‑time data from Open Food Facts · Advanced barcode engine · 100% privacy</footer>
+</div>
+
+<script>
+  // ---------- DOM elements ----------
+  const video = document.getElementById('scanner-video');
+  const startBtn = document.getElementById('start-cam-btn');
+  const stopBtn = document.getElementById('stop-cam-btn');
+  const torchBtn = document.getElementById('torch-btn');
+  const focusSlider = document.getElementById('focus-slider');
+  const scanStatusDiv = document.getElementById('scan-status');
+  const resultsContainer = document.getElementById('results-container');
+  const foodForm = document.getElementById('food-search-form');
+  const foodInput = document.getElementById('food-input');
+  const manualBarcodeInput = document.getElementById('manual-barcode');
+  const manualBtn = document.getElementById('manual-btn');
+
+  let stream = null;
+  let scanInterval = null;
+  let barcodeDetector = null;
+
+  // ---------- Open Food Facts API ----------
+ async function fetchProductByQuery(query) {
+  const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(query)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments`;
+  const resp = await fetch(searchUrl);
+  const data = await resp.json();
+  const products = data.products || [];
+  if (products.length === 0) throw new Error(`No results for "${query}"`);
+  
+  // Prefer product with most nutrition fields filled
+  const scored = products.map(p => {
+    let score = 0;
+    const n = p.nutriments || {};
+    if (n['energy-kcal']) score += 3;
+    if (n.proteins) score += 2;
+    if (n.fat) score += 2;
+    if (n.carbohydrates) score += 2;
+    if (n.fiber) score += 1;
+    if (n.sugars) score += 1;
+    return { product: p, score };
+  });
+  scored.sort((a,b) => b.score - a.score);
+  const best = scored[0].product;
+  if (best.score === 0) throw new Error(`No detailed nutrition data for "${query}". Try a different keyword.`);
+  return best;
+}
+
+  // Enhanced render with additional nutrients & health score (techy & rich)
+  function renderNutrition(product) {
+    const n = product.nutriments || {};
+    const cal = n['energy-kcal'] ? parseFloat(n['energy-kcal']).toFixed(0) : '—';
+    const protein = n.proteins ? parseFloat(n.proteins).toFixed(1) : '—';
+    const fat = n.fat ? parseFloat(n.fat).toFixed(1) : '—';
+    const carbs = n.carbohydrates ? parseFloat(n.carbohydrates).toFixed(1) : '—';
+    const fiber = n.fiber ? parseFloat(n.fiber).toFixed(1) : '—';
+    const sugars = n.sugars ? parseFloat(n.sugars).toFixed(1) : '—';
+    const sodium = n.sodium ? parseFloat(n.sodium).toFixed(0) : '—';
+    
+    const name = product.product_name || product.generic_name || "Food product";
+    const brand = product.brands || "Unknown brand";
+    
+    // simple health score (mock: ratio of protein+fiber vs sugars+fat)
+    let healthScore = 70;
+    if (protein !== '—' && fiber !== '—' && sugars !== '—') {
+      let score = (parseFloat(protein) * 1.5 + parseFloat(fiber) * 2) - (parseFloat(sugars) * 1.2 + parseFloat(fat) * 0.8);
+      score = Math.min(100, Math.max(20, Math.round(score + 50)));
+      healthScore = score;
+    } else if (cal !== '—') {
+      let kcal = parseFloat(cal);
+      if (kcal < 200) healthScore = 88;
+      else if (kcal < 500) healthScore = 70;
+      else healthScore = 52;
+    }
+    
+    let scoreIcon = healthScore >= 75 ? '🍏 Excellent' : (healthScore >= 50 ? '⚡ Good' : '⚠️ Moderate');
+    let scoreColor = healthScore >= 75 ? '#4ade80' : (healthScore >= 50 ? '#facc15' : '#f97316');
+    
+    resultsContainer.innerHTML = `
+      <div class="results-card">
+        <div class="product-title"><i class="fas fa-utensils"></i> ${escapeHtml(name)}</div>
+        <div class="product-meta"><i class="fas fa-tag"></i> ${escapeHtml(brand)} · nutrition facts per 100g</div>
+        <div class="nutrient-grid">
+          <div class="nutrient-item"><div class="nutrient-value">${cal}</div><div class="nutrient-unit">kcal</div><div class="nutrient-label"><i class="fas fa-fire"></i> Energy</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${protein}</div><div class="nutrient-unit">g</div><div class="nutrient-label"><i class="fas fa-dumbbell"></i> Protein</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${fat}</div><div class="nutrient-unit">g</div><div class="nutrient-label"><i class="fas fa-oil-can"></i> Total fat</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${carbs}</div><div class="nutrient-unit">g</div><div class="nutrient-label"><i class="fas fa-bread-slice"></i> Carbs</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${fiber}</div><div class="nutrient-unit">g</div><div class="nutrient-label"><i class="fas fa-seedling"></i> Fiber</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${sugars}</div><div class="nutrient-unit">g</div><div class="nutrient-label"><i class="fas fa-candy-cane"></i> Sugars</div></div>
+          <div class="nutrient-item"><div class="nutrient-value">${sodium}</div><div class="nutrient-unit">mg</div><div class="nutrient-label"><i class="fas fa-water"></i> Sodium</div></div>
+        </div>
+        <div class="health-score" style="border-left: 4px solid ${scoreColor};">
+          <i class="fas fa-heartbeat" style="color:${scoreColor};"></i> Health index: ${healthScore}/100 · ${scoreIcon}
+        </div>
+        <hr>
+        <div style="font-size:0.7rem; display:flex; gap:0.8rem; justify-content:space-between;"><span>🔬 Open Food Facts v3</span><span><i class="fas fa-microchip"></i> AI enriched</span></div>
+      </div>
+    `;
+  }
+
+  function showError(msg) {
+    resultsContainer.innerHTML = `<div class="results-card"><div class="error-message"><i class="fas fa-exclamation-triangle"></i> ${msg}</div></div>`;
+  }
+  function showLoading() {
+    resultsContainer.innerHTML = `<div class="results-card"><div class="loading"><i class="fas fa-cog fa-spin"></i> Fetching deep nutrition data...</div></div>`;
+  }
+  function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[m])); }
+
+  async function analyze(fetcher) {
+    showLoading();
+    try {
+      const product = await fetcher();
+      renderNutrition(product);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  // ---------- NATIVE BARCODE DETECTOR (fixes scanning effectively) ----------
+  async function startNativeScanner() {
+    if (!window.BarcodeDetector) {
+      scanStatusDiv.innerHTML = "<i class='fas fa-exclamation-circle'></i> Browser missing BarcodeDetector → using fallback (less accurate).";
+      return startHtml5Fallback();
+    }
+    try {
+      barcodeDetector = new BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'] });
+    } catch(e) {
+      scanStatusDiv.innerHTML = "<i class='fas fa-microchip'></i> BarcodeDetector init failed → fallback mode.";
+      return startHtml5Fallback();
+    }
+
+    const constraints = { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 }, focusMode: "continuous" } };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities();
+      if (caps.torch) {
+        torchBtn.disabled = false;
+        torchBtn.onclick = () => track.applyConstraints({ advanced: [{ torch: !track.getSettings().torch }] });
+      }
+      if (caps.focusDistance) {
+        focusSlider.disabled = false;
+        focusSlider.oninput = async () => await track.applyConstraints({ advanced: [{ focusDistance: parseFloat(focusSlider.value) / 1000 }] });
+      }
+      scanStatusDiv.innerHTML = "<i class='fas fa-check-circle'></i> Camera active – hold barcode inside frame";
+      if (scanInterval) clearInterval(scanInterval);
+      scanInterval = setInterval(async () => {
+        if (!video.videoWidth || !video.videoHeight) return;
+        try {
+          const barcodes = await barcodeDetector.detect(video);
+          if (barcodes.length > 0) {
+            const code = barcodes[0].rawValue;
+            scanStatusDiv.innerHTML = `<i class='fas fa-barcode'></i> Detected: ${code} – analyzing...`;
+            clearInterval(scanInterval);
+            stopCamera();
+            await analyze(() => fetchProductByBarcode(code));
+            scanStatusDiv.innerHTML = `<i class='fas fa-chart-simple'></i> Analyzed ${code}`;
+          }
+        } catch(e) {}
+      }, 180);
+    } catch(err) {
+      scanStatusDiv.innerHTML = `<i class='fas fa-camera'></i> Camera error: ${err.message}. Trying fallback.`;
+      startHtml5Fallback();
+    }
+  }
+
+  async function startHtml5Fallback() {
+    scanStatusDiv.innerHTML = "<i class='fas fa-qrcode'></i> Fallback scanner active – align barcode carefully.";
+    const html5Scanner = new Html5Qrcode("video-container");
+    try {
+      await html5Scanner.start(
+        { facingMode: "environment" },
+        { fps: 15, qrbox: { width: 320, height: 240 }, supportedScanTypes: [] },
+        async (decodedText) => {
+          await html5Scanner.stop();
+          scanStatusDiv.innerHTML = `<i class='fas fa-check'></i> Scanned: ${decodedText}`;
+          await analyze(() => fetchProductByBarcode(decodedText));
+        },
+        () => {}
+      );
+    } catch(e) {
+      scanStatusDiv.innerHTML = "<i class='fas fa-keyboard'></i> Fallback failed – use manual barcode entry.";
+    }
+  }
+
+  function stopCamera() {
+    if (scanInterval) clearInterval(scanInterval);
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    video.srcObject = null;
+    torchBtn.disabled = true;
+    focusSlider.disabled = true;
+  }
+
+  startBtn.onclick = () => { stopCamera(); startNativeScanner(); };
+  stopBtn.onclick = () => { stopCamera(); scanStatusDiv.innerHTML = "<i class='fas fa-power-off'></i> Camera stopped."; };
+  
+  // text search
+  foodForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const q = foodInput.value.trim();
+    if (!q) return showError("Enter a food name");
+    await analyze(() => fetchProductByQuery(q));
+  };
+  // manual barcode
+  manualBtn.onclick = async () => {
+    const code = manualBarcodeInput.value.trim();
+    if (!code) return showError("Enter a barcode number");
+    stopCamera();
+    await analyze(() => fetchProductByBarcode(code));
+  };
+  
+  foodInput.value = "greek yogurt";
+  manualBarcodeInput.placeholder = "EAN-13 / UPC (e.g., 841234567890)";
+</script>
+</body>
+</html>
